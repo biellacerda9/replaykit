@@ -59,6 +59,10 @@ export function finishExecution(
   const durationMs =
     new Date(finishedAt).getTime() - new Date(execution.startedAt).getTime();
 
+  if (durationMs < 0) {
+    throw new RangeError("finishedAt cannot be earlier than startedAt");
+  }
+
   return {
     id: execution.id,
     startedAt: execution.startedAt,

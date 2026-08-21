@@ -43,4 +43,14 @@ describe("execution lifecycle", () => {
     expect(finished.response.status).toBe(500);
     expect(finished.error?.name).toBe("PaymentError");
   });
+
+  it("rejects a finish time earlier than the start", () => {
+    expect(() =>
+      finishExecution(
+        execution,
+        { status: 200, headers: {} },
+        "2026-08-21T16:59:59.999Z",
+      ),
+    ).toThrow("finishedAt cannot be earlier than startedAt");
+  });
 });
