@@ -4,4 +4,14 @@ export type {
   HttpResponseSnapshot,
 } from "./http.js";
 
-export type { Execution, ExecutionError } from "./execution.js";
+export type {
+  AbortedExecution,
+  Execution,
+  ExecutionError,
+  ExecutionState,
+  FinishedExecution,
+  RunningExecution,
+  StartExecutionInput,
+} from "./execution.js";
+
+export { finishExecution, startExecution } from "./execution.js";

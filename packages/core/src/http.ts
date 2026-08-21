@@ -1,14 +1,14 @@
 export type HttpHeaders = Readonly<Record<string, string | readonly string[]>>;
 
 export interface HttpRequestSnapshot {
-  method: string;
-  url: string;
-  headers: HttpHeaders;
-  body?: unknown;
+  readonly method: string;
+  readonly url: string;
+  readonly headers: HttpHeaders;
+  readonly body?: unknown;
 }
 
 export interface HttpResponseSnapshot {
-  status: number;
-  headers: HttpHeaders;
-  body?: unknown;
+  readonly status: number;
+  readonly headers: HttpHeaders;
+  readonly body?: unknown;
 }

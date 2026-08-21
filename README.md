@@ -6,6 +6,8 @@ Capture uma execução HTTP de uma aplicação Node.js e reproduza-a sem repetir
 
 O projeto está sendo construído do zero. A primeira etapa é definir o domínio central de uma execução antes de instrumentar qualquer framework.
 
+O desenvolvimento é acompanhado pelo [roadmap de sprints](./docs/roadmap.md).
+
 ## Estrutura
 
 ```text
