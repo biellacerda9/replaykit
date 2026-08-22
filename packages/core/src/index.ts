@@ -14,4 +14,8 @@ export type {
   StartExecutionInput,
 } from "./execution.js";
 
-export { finishExecution, startExecution } from "./execution.js";
+export {
+  finishExecution,
+  startExecution,
+  abortExecution,
+} from "./execution.js";

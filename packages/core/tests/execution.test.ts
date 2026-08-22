@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { finishExecution, startExecution } from "../src/execution.js";
+import {
+  abortExecution,
+  finishExecution,
+  startExecution,
+} from "../src/index.js";
 
 const execution = startExecution({
   id: "execution-1",
@@ -19,23 +23,17 @@ const execution = startExecution({
 });
 
 describe("execution lifecycle", () => {
-  it("starts in the running state", () => {
+  it("starts in running state", () => {
     expect(execution.state).toBe("running");
     expect(execution.request.url).toBe("/checkout");
   });
 
-  it("finishes with a response, error, and duration", () => {
+  it("finishes with response, error, and duration", () => {
     const finished = finishExecution(
       execution,
-      {
-        status: 500,
-        headers: {},
-      },
+      { status: 500, headers: {} },
       "2026-08-21T17:00:00.100Z",
-      {
-        name: "PaymentError",
-        message: "Payment failed",
-      },
+      { name: "PaymentError", message: "Payment failed" },
     );
 
     expect(finished.state).toBe("finished");
@@ -44,7 +42,7 @@ describe("execution lifecycle", () => {
     expect(finished.error?.name).toBe("PaymentError");
   });
 
-  it("rejects a finish time earlier than the start", () => {
+  it("rejects finish time earlier than start", () => {
     expect(() =>
       finishExecution(
         execution,
@@ -52,5 +50,17 @@ describe("execution lifecycle", () => {
         "2026-08-21T16:59:59.999Z",
       ),
     ).toThrow("finishedAt cannot be earlier than startedAt");
+  });
+
+  it("aborts without an HTTP response", () => {
+    const aborted = abortExecution(execution, "2026-08-21T17:00:00.050Z", {
+      name: "ConnectionError",
+      message: "The client disconnected",
+    });
+
+    expect(aborted.state).toBe("aborted");
+    expect(aborted.durationMs).toBe(50);
+    expect(aborted.error.name).toBe("ConnectionError");
+    expect("response" in aborted).toBe(false);
   });
 });
