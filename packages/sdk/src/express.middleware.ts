@@ -33,10 +33,7 @@ function sanitizeHeaders(
       sensitiveHeaderNames.includes(lowerKey) ||
       sensitiveHeaderKeywords.some((keyword) => lowerKey.includes(keyword))
     ) {
-      if (
-        lowerKey === "authorization" ||
-        lowerKey === "proxy-authorization"
-      ) {
+      if (lowerKey === "authorization" || lowerKey === "proxy-authorization") {
         const authorizationValue = Array.isArray(value) ? value[0] : value;
         const scheme = String(authorizationValue ?? "").split(" ")[0];
 
@@ -51,6 +48,35 @@ function sanitizeHeaders(
     }
   }
   return safeHeaders;
+}
+
+//unknown porque o json pode ser qualquer coisa
+function sanitizeBody(body: unknown): unknown {
+  if (body === null || body === undefined) {
+    return body;
+  }
+
+  if (Array.isArray(body)) {
+    return body.map(sanitizeBody);
+  }
+
+  if (typeof body === "object" && body !== null) {
+    const sanitized: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(body)) {
+      const lowerKey = key.toLowerCase();
+      if (
+        sensitiveHeaderKeywords.some((keyword) => lowerKey.includes(keyword)) ||
+        sensitiveHeaderNames.includes(lowerKey)
+      ) {
+        sanitized[key] = "[REDACTED]";
+      } else {
+        sanitized[key] = sanitizeBody(value);
+      }
+    }
+    return sanitized;
+  }
+
+  return body;
 }
 
 //cria um middleware básico que registra uma requisição e resposta HTTP, e chama a função onExecutionFinished quando a execução termina
@@ -71,6 +97,7 @@ export function replayKitMiddleware(options: ReplayKitMiddlewareOptions) {
         method: req.method,
         url: req.originalUrl,
         headers: sanitizeHeaders(req.headers),
+        body: sanitizeBody(req.body),
       },
     });
 

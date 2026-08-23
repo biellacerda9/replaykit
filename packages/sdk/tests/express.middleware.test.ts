@@ -9,12 +9,14 @@ import { replayKitMiddleware } from "../src/index.js";
 function captureExecution(
   requestHeaders: Record<string, string | string[] | undefined>,
   responseHeaders: Record<string, string | string[] | number | undefined>,
+  requestBody?: unknown,
 ): Execution {
   let capturedExecution: Execution | undefined;
   const request = {
     method: "GET",
     originalUrl: "/health",
     headers: requestHeaders,
+    body: requestBody,
   } as Request;
   const response = Object.assign(new EventEmitter(), {
     statusCode: 200,
@@ -88,6 +90,33 @@ describe("replayKitMiddleware", () => {
     expect(execution.response.headers).toEqual({
       "content-length": "42",
       "set-cookie": "[REDACTED]",
+    });
+  });
+
+  it("captures a safe copy of an object body", () => {
+    const requestBody = {
+      email: "ana@example.com",
+      profile: {
+        password: "secret-password",
+      },
+      users: [{ apiKey: "secret-key" }],
+    };
+
+    const execution = captureExecution({}, {}, requestBody);
+
+    expect(execution.request.body).toEqual({
+      email: "ana@example.com",
+      profile: {
+        password: "[REDACTED]",
+      },
+      users: [{ apiKey: "[REDACTED]" }],
+    });
+    expect(requestBody).toEqual({
+      email: "ana@example.com",
+      profile: {
+        password: "secret-password",
+      },
+      users: [{ apiKey: "secret-key" }],
     });
   });
 });
