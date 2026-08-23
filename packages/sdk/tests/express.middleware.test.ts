@@ -39,6 +39,43 @@ function captureExecution(
   return capturedExecution;
 }
 
+function captureJsonResponse(responseBody: unknown): {
+  execution: Execution;
+  sentBody: unknown;
+} {
+  let capturedExecution: Execution | undefined;
+  let sentBody: unknown;
+  const request = {
+    method: "POST",
+    originalUrl: "/session",
+    headers: {},
+  } as Request;
+  const response = Object.assign(new EventEmitter(), {
+    statusCode: 200,
+    getHeaders: () => ({ "content-type": "application/json" }),
+    json(body: unknown) {
+      sentBody = body;
+      return response;
+    },
+  }) as Response;
+
+  const middleware = replayKitMiddleware({
+    onExecutionFinished(execution) {
+      capturedExecution = execution;
+    },
+  });
+
+  middleware(request, response, () => undefined);
+  response.json(responseBody);
+  response.emit("finish");
+
+  if (!capturedExecution) {
+    throw new Error("Expected the middleware to capture an execution");
+  }
+
+  return { execution: capturedExecution, sentBody };
+}
+
 describe("replayKitMiddleware", () => {
   it("keeps non-sensitive request headers", () => {
     const execution = captureExecution(
@@ -117,6 +154,29 @@ describe("replayKitMiddleware", () => {
         password: "secret-password",
       },
       users: [{ apiKey: "secret-key" }],
+    });
+  });
+
+  it("captures a safe response body without changing the body sent to the client", () => {
+    const responseBody = {
+      message: "Session created",
+      token: "secret-token",
+    };
+
+    const { execution, sentBody } = captureJsonResponse(responseBody);
+
+    expect(sentBody).toEqual({
+      message: "Session created",
+      token: "secret-token",
+    });
+
+    if (execution.state !== "finished") {
+      throw new Error("Expected a finished execution");
+    }
+
+    expect(execution.response.body).toEqual({
+      message: "Session created",
+      token: "[REDACTED]",
     });
   });
 });

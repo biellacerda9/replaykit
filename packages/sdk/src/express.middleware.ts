@@ -108,12 +108,22 @@ export function replayKitMiddleware(options: ReplayKitMiddlewareOptions) {
         {
           status: res.statusCode,
           headers: sanitizeHeaders(res.getHeaders()),
+          body: responseBody,
         },
         new Date().toISOString(),
       );
 
       options.onExecutionFinished(finishedExecution);
     });
+
+    //aqui faço uma copia do json original, e sobrescrevo o json do express para interceptar a resposta e sanitizar o body antes de enviar para o core
+    const originalJson = res.json;
+
+    let responseBody: unknown;
+    res.json = function (body: unknown) {
+      responseBody = sanitizeBody(body);
+      return originalJson.call(this, body);
+    };
 
     next();
   };

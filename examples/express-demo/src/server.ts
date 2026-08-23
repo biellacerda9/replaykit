@@ -26,6 +26,13 @@ app.post("/echo", (request, response) => {
   response.json(request.body);
 });
 
+app.post("/session", (_request, response) => {
+  response.json({
+    message: "Session created",
+    token: "demo-token",
+  });
+});
+
 app.listen(port, () => {
   console.log(`Express demo listening on http://localhost:${port}`);
 });
