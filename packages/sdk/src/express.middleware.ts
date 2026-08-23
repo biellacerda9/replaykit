@@ -7,8 +7,50 @@ import {
 } from "@replaykit/core";
 import type { NextFunction, Request, Response } from "express";
 
+const sensitiveHeaderNames = [
+  "authorization",
+  "proxy-authorization",
+  "cookie",
+  "set-cookie",
+  "x-api-key",
+];
+
+const sensitiveHeaderKeywords = ["token", "secret", "password", "key"];
+
 export interface ReplayKitMiddlewareOptions {
   readonly onExecutionFinished: (execution: Execution) => void;
+}
+
+function sanitizeHeaders(
+  headers: Record<string, string | string[] | number | undefined>,
+) {
+  const safeHeaders: Record<string, string> = {};
+
+  for (const [key, value] of Object.entries(headers)) {
+    const lowerKey = key.toLowerCase();
+
+    if (
+      sensitiveHeaderNames.includes(lowerKey) ||
+      sensitiveHeaderKeywords.some((keyword) => lowerKey.includes(keyword))
+    ) {
+      if (
+        lowerKey === "authorization" ||
+        lowerKey === "proxy-authorization"
+      ) {
+        const authorizationValue = Array.isArray(value) ? value[0] : value;
+        const scheme = String(authorizationValue ?? "").split(" ")[0];
+
+        safeHeaders[key] = scheme ? `${scheme} [REDACTED]` : "[REDACTED]";
+      } else {
+        safeHeaders[key] = "[REDACTED]";
+      }
+    } else {
+      safeHeaders[key] = Array.isArray(value)
+        ? value.join(", ")
+        : String(value ?? "");
+    }
+  }
+  return safeHeaders;
 }
 
 //cria um middleware básico que registra uma requisição e resposta HTTP, e chama a função onExecutionFinished quando a execução termina
@@ -28,7 +70,7 @@ export function replayKitMiddleware(options: ReplayKitMiddlewareOptions) {
       request: {
         method: req.method,
         url: req.originalUrl,
-        headers: {},
+        headers: sanitizeHeaders(req.headers),
       },
     });
 
@@ -38,7 +80,7 @@ export function replayKitMiddleware(options: ReplayKitMiddlewareOptions) {
         execution,
         {
           status: res.statusCode,
-          headers: {},
+          headers: sanitizeHeaders(res.getHeaders()),
         },
         new Date().toISOString(),
       );
