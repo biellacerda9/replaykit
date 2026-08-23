@@ -1,9 +1,11 @@
 import express from "express";
 
 import { replayKitMiddleware } from "@replaykit/sdk";
+import { SqliteExecutionStore } from "@replaykit/storage";
 
 const app = express();
 const port = 3001;
+const executionStore = new SqliteExecutionStore();
 
 app.use(express.json());
 
@@ -11,6 +13,7 @@ app.use(express.json());
 app.use(
   replayKitMiddleware({
     onExecutionFinished(execution) {
+      executionStore.save(execution);
       console.log("ReplayKit captured execution:");
       console.log(JSON.stringify(execution, null, 2));
     },
@@ -31,6 +34,30 @@ app.post("/session", (_request, response) => {
     message: "Session created",
     token: "demo-token",
   });
+});
+
+app.get("/executions", (_request, response) => {
+  const executions = executionStore.list();
+  const summaries = executions.map((execution) => ({
+    id: execution.id,
+    state: execution.state,
+    method: execution.request.method,
+    url: execution.request.url,
+    durationMs: execution.state === "running" ? null : execution.durationMs,
+    startedAt: execution.startedAt,
+    finishedAt: execution.state === "running" ? null : execution.finishedAt,
+    status: execution.state === "finished" ? execution.response.status : null,
+  }));
+  response.json(summaries);
+});
+
+app.get("/executions/:id", (request, response) => {
+  const execution = executionStore.findById(request.params.id);
+  if (!execution) {
+    response.status(404).json({ error: "Execution not found" });
+    return;
+  }
+  response.json(execution);
 });
 
 app.listen(port, () => {

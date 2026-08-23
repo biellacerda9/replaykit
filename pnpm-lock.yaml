@@ -35,6 +35,9 @@ importers:
       '@replaykit/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
+      '@replaykit/storage':
+        specifier: workspace:*
+        version: link:../../packages/storage
       express:
         specifier: ^5.1.0
         version: 5.2.1(supports-color@7.2.0)
@@ -60,6 +63,16 @@ importers:
       '@types/express':
         specifier: ^5.0.6
         version: 5.0.6
+
+  packages/storage:
+    dependencies:
+      '@replaykit/core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      '@types/node':
+        specifier: ^26.2.0
+        version: 26.2.0
 
 packages:
 
