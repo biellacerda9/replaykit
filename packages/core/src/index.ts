@@ -16,6 +16,7 @@ export type {
 export type {
   FailedReplayResult,
   ReplayAttempt,
+  ReplayDifference,
   ReplayOutcome,
   ReplayResult,
   SuccessfulReplayResult,

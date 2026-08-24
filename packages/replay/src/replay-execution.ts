@@ -1,6 +1,7 @@
 import type {
   FinishedExecution,
   HttpResponseSnapshot,
+  ReplayDifference,
   ReplayResult,
 } from "@replaykit/core";
 
@@ -34,16 +35,14 @@ export async function replayExecution(
       headers: {},
       body: await response.json(),
     };
-    const responsesAreEqual =
-      execution.response.status === replayedResponse.status &&
-      JSON.stringify(execution.response.body) ===
-        JSON.stringify(replayedResponse.body);
+    const differences = findDifferences(execution.response, replayedResponse);
 
     return {
       executionId: execution.id,
-      outcome: responsesAreEqual ? "matched" : "divergent",
+      outcome: differences.length === 0 ? "matched" : "divergent",
       originalResponse: execution.response,
       replayedResponse,
+      differences,
     };
   } catch (error) {
     return {
@@ -57,4 +56,24 @@ export async function replayExecution(
       },
     };
   }
+}
+
+function findDifferences(
+  originalResponse: HttpResponseSnapshot,
+  replayedResponse: HttpResponseSnapshot,
+): ReplayDifference[] {
+  const differences: ReplayDifference[] = [];
+
+  if (originalResponse.status !== replayedResponse.status) {
+    differences.push("status");
+  }
+
+  if (
+    JSON.stringify(originalResponse.body) !==
+    JSON.stringify(replayedResponse.body)
+  ) {
+    differences.push("body");
+  }
+
+  return differences;
 }

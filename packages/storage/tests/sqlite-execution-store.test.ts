@@ -91,9 +91,13 @@ describe("SqliteExecutionStore", () => {
       );
       const result: ReplayResult = {
         executionId: finished.id,
-        outcome: "matched",
+        outcome: "divergent",
         originalResponse: finished.response,
-        replayedResponse: finished.response,
+        replayedResponse: {
+          ...finished.response,
+          body: { status: "unavailable" },
+        },
+        differences: ["body"],
       };
 
       store.save(finished);
@@ -102,11 +106,17 @@ describe("SqliteExecutionStore", () => {
 
       expect(firstAttempt.attemptNumber).toBe(1);
       expect(secondAttempt.attemptNumber).toBe(2);
+      expect(firstAttempt.differences).toEqual(["body"]);
       expect(
         store
           .listReplayAttempts(finished.id)
           .map((attempt) => attempt.attemptNumber),
       ).toEqual([1, 2]);
+      expect(
+        store
+          .listReplayAttempts(finished.id)
+          .map((attempt) => attempt.differences),
+      ).toEqual([["body"], ["body"]]);
     });
   });
 });

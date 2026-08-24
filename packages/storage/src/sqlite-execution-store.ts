@@ -10,6 +10,7 @@ import type {
   HttpRequestSnapshot,
   HttpResponseSnapshot,
   ReplayAttempt,
+  ReplayDifference,
   ReplayResult,
 } from "@replaykit/core";
 
@@ -39,6 +40,7 @@ interface ReplayAttemptRow {
   readonly attempt_number: number;
   readonly replayed_at: string;
   readonly outcome: ReplayAttempt["outcome"];
+  readonly differences_json: string;
   readonly replayed_status: number | null;
   readonly replayed_headers_json: string | null;
   readonly replayed_body_json: string | null;
@@ -80,6 +82,7 @@ export class SqliteExecutionStore {
         attempt_number INTEGER NOT NULL,
         replayed_at TEXT NOT NULL,
         outcome TEXT NOT NULL,
+        differences_json TEXT NOT NULL DEFAULT '[]',
         replayed_status INTEGER,
         replayed_headers_json TEXT,
         replayed_body_json TEXT,
@@ -89,6 +92,16 @@ export class SqliteExecutionStore {
         FOREIGN KEY(execution_id) REFERENCES executions(id)
       )
     `);
+
+    const columns = this.database
+      .prepare("PRAGMA table_info(replay_attempts)")
+      .all() as { name: string }[];
+
+    if (!columns.some((column) => column.name === "differences_json")) {
+      this.database.exec(
+        "ALTER TABLE replay_attempts ADD COLUMN differences_json TEXT NOT NULL DEFAULT '[]'",
+      );
+    }
   }
 
   save(execution: Execution): void {
@@ -157,12 +170,12 @@ export class SqliteExecutionStore {
       .prepare(
         `
           INSERT INTO replay_attempts (
-            id, execution_id, attempt_number, replayed_at, outcome,
-            replayed_status, replayed_headers_json, replayed_body_json,
+          id, execution_id, attempt_number, replayed_at, outcome, differences_json,
+          replayed_status, replayed_headers_json, replayed_body_json,
             error_name, error_message
           ) VALUES (
-            $id, $execution_id, $attempt_number, $replayed_at, $outcome,
-            $replayed_status, $replayed_headers_json, $replayed_body_json,
+          $id, $execution_id, $attempt_number, $replayed_at, $outcome, $differences_json,
+          $replayed_status, $replayed_headers_json, $replayed_body_json,
             $error_name, $error_message
           )
         `,
@@ -223,6 +236,7 @@ function toReplayAttempt(
     attemptNumber,
     replayedAt: new Date().toISOString(),
     outcome: result.outcome,
+    differences: result.outcome === "failed" ? [] : result.differences,
     ...(result.outcome === "failed"
       ? { error: result.error }
       : { replayedResponse: result.replayedResponse }),
@@ -240,6 +254,7 @@ function toReplayAttemptParameters(
     attempt_number: attempt.attemptNumber,
     replayed_at: attempt.replayedAt,
     outcome: attempt.outcome,
+    differences_json: stringify(attempt.differences) ?? "[]",
     replayed_status: response?.status ?? null,
     replayed_headers_json:
       response === undefined ? null : stringify(response.headers),
@@ -262,6 +277,7 @@ function fromReplayAttemptRow(row: ReplayAttemptRow): ReplayAttempt {
       attemptNumber: row.attempt_number,
       replayedAt: row.replayed_at,
       outcome: "failed",
+      differences: parseJson(row.differences_json) as ReplayDifference[],
       error: {
         name: row.error_name,
         message: row.error_message,
@@ -279,6 +295,7 @@ function fromReplayAttemptRow(row: ReplayAttemptRow): ReplayAttempt {
     attemptNumber: row.attempt_number,
     replayedAt: row.replayed_at,
     outcome: row.outcome,
+    differences: parseJson(row.differences_json) as ReplayDifference[],
     replayedResponse: {
       status: row.replayed_status,
       headers: parseJson(row.replayed_headers_json) as HttpHeaders,

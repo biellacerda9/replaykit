@@ -48,7 +48,10 @@ describe("replayExecution", () => {
     );
 
     expect(requestedUrl).toBe("http://example.test/health");
-    expect(result.outcome).toBe("matched");
+    expect(result).toMatchObject({
+      outcome: "matched",
+      differences: [],
+    });
   });
 
   it("returns divergent when the response body changes", async () => {
@@ -66,7 +69,10 @@ describe("replayExecution", () => {
       createFinishedGetExecution(),
     );
 
-    expect(result.outcome).toBe("divergent");
+    expect(result).toMatchObject({
+      outcome: "divergent",
+      differences: ["body"],
+    });
   });
 
   it("returns failed when fetch throws an error", async () => {

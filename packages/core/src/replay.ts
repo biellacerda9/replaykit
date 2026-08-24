@@ -3,6 +3,8 @@ import type { HttpResponseSnapshot } from "./http.js";
 
 export type ReplayOutcome = "matched" | "divergent" | "failed";
 
+export type ReplayDifference = "status" | "body";
+
 interface ReplayResultBase {
   readonly executionId: string;
   readonly originalResponse: HttpResponseSnapshot;
@@ -11,6 +13,7 @@ interface ReplayResultBase {
 export interface SuccessfulReplayResult extends ReplayResultBase {
   readonly outcome: "matched" | "divergent";
   readonly replayedResponse: HttpResponseSnapshot;
+  readonly differences: readonly ReplayDifference[];
 }
 
 export interface FailedReplayResult extends ReplayResultBase {
@@ -26,6 +29,7 @@ export interface ReplayAttempt {
   readonly attemptNumber: number;
   readonly replayedAt: string;
   readonly outcome: ReplayOutcome;
+  readonly differences: readonly ReplayDifference[];
   readonly replayedResponse?: HttpResponseSnapshot;
   readonly error?: ExecutionError;
 }
