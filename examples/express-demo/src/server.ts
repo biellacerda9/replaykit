@@ -3,6 +3,8 @@ import express from "express";
 import { replayKitMiddleware } from "@replaykit/sdk";
 import { SqliteExecutionStore } from "@replaykit/storage";
 
+import { replayExecution } from "@replaykit/replay";
+
 const app = express();
 const port = 3001;
 const executionStore = new SqliteExecutionStore();
@@ -58,6 +60,24 @@ app.get("/executions/:id", (request, response) => {
     return;
   }
   response.json(execution);
+});
+
+const baseUrl = `http://localhost:${port}`;
+
+app.post("/executions/:id/replay", async (request, response) => {
+  const id = request.params.id;
+  const execution = executionStore.findById(id);
+  if (!execution) {
+    response.status(404).json({ error: "Execution not found" });
+    return;
+  }
+  if (execution.state !== "finished") {
+    response.status(400).json({ error: "Execution is not finished" });
+    return;
+  }
+
+  const result = await replayExecution(baseUrl, execution);
+  response.json(result);
 });
 
 app.listen(port, () => {

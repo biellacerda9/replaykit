@@ -32,6 +32,9 @@ importers:
 
   examples/express-demo:
     dependencies:
+      '@replaykit/replay':
+        specifier: workspace:*
+        version: link:../../packages/replay
       '@replaykit/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
@@ -50,6 +53,16 @@ importers:
         version: 4.23.12
 
   packages/core: {}
+
+  packages/replay:
+    dependencies:
+      '@replaykit/core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      '@types/node':
+        specifier: ^26.2.0
+        version: 26.2.0
 
   packages/sdk:
     dependencies:
