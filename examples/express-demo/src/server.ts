@@ -8,6 +8,7 @@ import { replayExecution } from "@replaykit/replay";
 const app = express();
 const port = 3001;
 const executionStore = new SqliteExecutionStore();
+let healthStatus = "ok";
 
 app.use(express.json());
 
@@ -24,7 +25,12 @@ app.use(
 
 // request começa com _ porque existe mas não é usado, então o typescript reclama, e o _ serve para dizer que ele existe mas não é usado
 app.get("/health", (_request, response) => {
-  response.json({ status: "ok" });
+  response.json({ status: healthStatus });
+});
+
+app.post("/demo/health-status/:status", (request, response) => {
+  healthStatus = request.params.status;
+  response.json({ status: healthStatus });
 });
 
 app.post("/echo", (request, response) => {
