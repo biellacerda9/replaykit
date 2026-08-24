@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 
 import { finishExecution, startExecution } from "@replaykit/core";
+import type { ReplayResult } from "@replaykit/core";
 import { describe, expect, it } from "vitest";
 
 import { SqliteExecutionStore } from "../src/index.js";
@@ -74,6 +75,38 @@ describe("SqliteExecutionStore", () => {
         "execution-2",
         "execution-1",
       ]);
+    });
+  });
+
+  it("numbers replay attempts for the same execution", () => {
+    withStore((store) => {
+      const running = createRunningExecution(
+        "execution-1",
+        "2026-08-24T17:00:00.000Z",
+      );
+      const finished = finishExecution(
+        running,
+        { status: 200, headers: {}, body: { status: "ok" } },
+        "2026-08-24T17:00:00.100Z",
+      );
+      const result: ReplayResult = {
+        executionId: finished.id,
+        outcome: "matched",
+        originalResponse: finished.response,
+        replayedResponse: finished.response,
+      };
+
+      store.save(finished);
+      const firstAttempt = store.saveReplayAttempt(result);
+      const secondAttempt = store.saveReplayAttempt(result);
+
+      expect(firstAttempt.attemptNumber).toBe(1);
+      expect(secondAttempt.attemptNumber).toBe(2);
+      expect(
+        store
+          .listReplayAttempts(finished.id)
+          .map((attempt) => attempt.attemptNumber),
+      ).toEqual([1, 2]);
     });
   });
 });

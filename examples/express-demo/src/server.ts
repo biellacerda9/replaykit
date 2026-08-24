@@ -83,7 +83,21 @@ app.post("/executions/:id/replay", async (request, response) => {
   }
 
   const result = await replayExecution(baseUrl, execution);
-  response.json(result);
+  const attempt = executionStore.saveReplayAttempt(result);
+
+  response.json(attempt);
+});
+
+app.get("/executions/:id/replays", (request, response) => {
+  const id = request.params.id;
+  const execution = executionStore.findById(id);
+  if (!execution) {
+    response.status(404).json({ error: "Execution not found" });
+    return;
+  }
+
+  const attempts = executionStore.listReplayAttempts(id);
+  response.json(attempts);
 });
 
 app.listen(port, () => {

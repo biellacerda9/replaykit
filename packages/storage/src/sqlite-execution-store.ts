@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -8,6 +9,8 @@ import type {
   HttpHeaders,
   HttpRequestSnapshot,
   HttpResponseSnapshot,
+  ReplayAttempt,
+  ReplayResult,
 } from "@replaykit/core";
 
 interface ExecutionRow {
@@ -29,6 +32,21 @@ interface ExecutionRow {
 }
 
 type ExecutionParameters = ExecutionRow;
+
+interface ReplayAttemptRow {
+  readonly id: string;
+  readonly execution_id: string;
+  readonly attempt_number: number;
+  readonly replayed_at: string;
+  readonly outcome: ReplayAttempt["outcome"];
+  readonly replayed_status: number | null;
+  readonly replayed_headers_json: string | null;
+  readonly replayed_body_json: string | null;
+  readonly error_name: string | null;
+  readonly error_message: string | null;
+}
+
+type ReplayAttemptParameters = ReplayAttemptRow;
 
 export class SqliteExecutionStore {
   private readonly database: DatabaseSync;
@@ -53,6 +71,22 @@ export class SqliteExecutionStore {
         error_name TEXT,
         error_message TEXT,
         error_stack TEXT
+      )
+    `);
+    this.database.exec(`
+      CREATE TABLE IF NOT EXISTS replay_attempts (
+        id TEXT PRIMARY KEY,
+        execution_id TEXT NOT NULL,
+        attempt_number INTEGER NOT NULL,
+        replayed_at TEXT NOT NULL,
+        outcome TEXT NOT NULL,
+        replayed_status INTEGER,
+        replayed_headers_json TEXT,
+        replayed_body_json TEXT,
+        error_name TEXT,
+        error_message TEXT,
+        UNIQUE(execution_id, attempt_number),
+        FOREIGN KEY(execution_id) REFERENCES executions(id)
       )
     `);
   }
@@ -110,6 +144,44 @@ export class SqliteExecutionStore {
     return rows.map(fromRow);
   }
 
+  saveReplayAttempt(result: ReplayResult): ReplayAttempt {
+    const row = this.database
+      .prepare(
+        "SELECT COUNT(*) AS count FROM replay_attempts WHERE execution_id = ?",
+      )
+      .get(result.executionId) as unknown as { count: number };
+    const attempt = toReplayAttempt(result, row.count + 1);
+    const parameters = toReplayAttemptParameters(attempt);
+
+    this.database
+      .prepare(
+        `
+          INSERT INTO replay_attempts (
+            id, execution_id, attempt_number, replayed_at, outcome,
+            replayed_status, replayed_headers_json, replayed_body_json,
+            error_name, error_message
+          ) VALUES (
+            $id, $execution_id, $attempt_number, $replayed_at, $outcome,
+            $replayed_status, $replayed_headers_json, $replayed_body_json,
+            $error_name, $error_message
+          )
+        `,
+      )
+      .run({ ...parameters });
+
+    return attempt;
+  }
+
+  listReplayAttempts(executionId: string): ReplayAttempt[] {
+    const rows = this.database
+      .prepare(
+        "SELECT * FROM replay_attempts WHERE execution_id = ? ORDER BY attempt_number ASC",
+      )
+      .all(executionId) as unknown as ReplayAttemptRow[];
+
+    return rows.map(fromReplayAttemptRow);
+  }
+
   close(): void {
     this.database.close();
   }
@@ -138,6 +210,82 @@ function toParameters(execution: Execution): ExecutionParameters {
     error_name: error?.name ?? null,
     error_message: error?.message ?? null,
     error_stack: error?.stack ?? null,
+  };
+}
+
+function toReplayAttempt(
+  result: ReplayResult,
+  attemptNumber: number,
+): ReplayAttempt {
+  return {
+    id: randomUUID(),
+    executionId: result.executionId,
+    attemptNumber,
+    replayedAt: new Date().toISOString(),
+    outcome: result.outcome,
+    ...(result.outcome === "failed"
+      ? { error: result.error }
+      : { replayedResponse: result.replayedResponse }),
+  };
+}
+
+function toReplayAttemptParameters(
+  attempt: ReplayAttempt,
+): ReplayAttemptParameters {
+  const response = attempt.replayedResponse;
+
+  return {
+    id: attempt.id,
+    execution_id: attempt.executionId,
+    attempt_number: attempt.attemptNumber,
+    replayed_at: attempt.replayedAt,
+    outcome: attempt.outcome,
+    replayed_status: response?.status ?? null,
+    replayed_headers_json:
+      response === undefined ? null : stringify(response.headers),
+    replayed_body_json:
+      response === undefined ? null : stringify(response.body),
+    error_name: attempt.error?.name ?? null,
+    error_message: attempt.error?.message ?? null,
+  };
+}
+
+function fromReplayAttemptRow(row: ReplayAttemptRow): ReplayAttempt {
+  if (row.outcome === "failed") {
+    if (row.error_name === null || row.error_message === null) {
+      throw new Error("Invalid failed replay attempt stored in the database");
+    }
+
+    return {
+      id: row.id,
+      executionId: row.execution_id,
+      attemptNumber: row.attempt_number,
+      replayedAt: row.replayed_at,
+      outcome: "failed",
+      error: {
+        name: row.error_name,
+        message: row.error_message,
+      },
+    };
+  }
+
+  if (row.replayed_status === null || row.replayed_headers_json === null) {
+    throw new Error("Invalid successful replay attempt stored in the database");
+  }
+
+  return {
+    id: row.id,
+    executionId: row.execution_id,
+    attemptNumber: row.attempt_number,
+    replayedAt: row.replayed_at,
+    outcome: row.outcome,
+    replayedResponse: {
+      status: row.replayed_status,
+      headers: parseJson(row.replayed_headers_json) as HttpHeaders,
+      ...(row.replayed_body_json === null
+        ? {}
+        : { body: parseJson(row.replayed_body_json) }),
+    },
   };
 }
 

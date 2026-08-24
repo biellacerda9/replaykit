@@ -19,3 +19,13 @@ export interface FailedReplayResult extends ReplayResultBase {
 }
 
 export type ReplayResult = SuccessfulReplayResult | FailedReplayResult;
+
+export interface ReplayAttempt {
+  readonly id: string;
+  readonly executionId: string;
+  readonly attemptNumber: number;
+  readonly replayedAt: string;
+  readonly outcome: ReplayOutcome;
+  readonly replayedResponse?: HttpResponseSnapshot;
+  readonly error?: ExecutionError;
+}

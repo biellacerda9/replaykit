@@ -15,6 +15,7 @@ export type {
 } from "./execution.js";
 export type {
   FailedReplayResult,
+  ReplayAttempt,
   ReplayOutcome,
   ReplayResult,
   SuccessfulReplayResult,
