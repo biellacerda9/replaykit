@@ -10,12 +10,20 @@ const port = 3001;
 const executionStore = new SqliteExecutionStore();
 let healthStatus = "ok";
 
+function isReplayKitRoute(url: string) {
+  return url.startsWith("/executions") || url.startsWith("/demo/");
+}
+
 app.use(express.json());
 
 //.use() aplica o que tiver ai dentro em todas as rotas, então o replayKitMiddleware vai ser aplicado em todas as rotas
 app.use(
   replayKitMiddleware({
     onExecutionFinished(execution) {
+      if (isReplayKitRoute(execution.request.url)) {
+        return;
+      }
+
       executionStore.save(execution);
       console.log("ReplayKit captured execution:");
       console.log(JSON.stringify(execution, null, 2));
@@ -45,7 +53,9 @@ app.post("/session", (_request, response) => {
 });
 
 app.get("/executions", (_request, response) => {
-  const executions = executionStore.list();
+  const executions = executionStore
+    .list()
+    .filter((execution) => !isReplayKitRoute(execution.request.url));
   const summaries = executions.map((execution) => ({
     id: execution.id,
     state: execution.state,
@@ -97,7 +107,7 @@ app.get("/executions/:id/replays", (request, response) => {
   }
 
   const attempts = executionStore.listReplayAttempts(id);
-  response.json(attempts);
+  response.json({ execution, attempts });
 });
 
 app.listen(port, () => {
