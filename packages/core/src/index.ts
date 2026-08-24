@@ -13,6 +13,12 @@ export type {
   RunningExecution,
   StartExecutionInput,
 } from "./execution.js";
+export type {
+  FailedReplayResult,
+  ReplayOutcome,
+  ReplayResult,
+  SuccessfulReplayResult,
+} from "./replay.js";
 
 export {
   finishExecution,
