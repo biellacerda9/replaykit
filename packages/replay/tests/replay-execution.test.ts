@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { replayExecution } from "../src/index.js";
 
-function createFinishedGetExecution() {
+function createFinishedGetExecution(body: unknown = { status: "ok" }) {
   const execution = startExecution({
     id: "execution-1",
     startedAt: "2026-08-24T17:00:00.000Z",
@@ -19,7 +19,7 @@ function createFinishedGetExecution() {
     {
       status: 200,
       headers: { "content-type": "application/json" },
-      body: { status: "ok" },
+      body,
     },
     "2026-08-24T17:00:00.100Z",
   );
@@ -67,6 +67,69 @@ describe("replayExecution", () => {
     const result = await replayExecution(
       "http://example.test",
       createFinishedGetExecution(),
+    );
+
+    expect(result).toMatchObject({
+      outcome: "divergent",
+      differences: ["body"],
+    });
+  });
+
+  it("returns matched when object keys are in a different order", async () => {
+    vi.stubGlobal(
+      "fetch",
+      async () =>
+        new Response(JSON.stringify({ age: 20, name: "Ana" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    );
+
+    const result = await replayExecution(
+      "http://example.test",
+      createFinishedGetExecution({ name: "Ana", age: 20 }),
+    );
+
+    expect(result).toMatchObject({
+      outcome: "matched",
+      differences: [],
+    });
+  });
+
+  it("returns divergent when a nested object value changes", async () => {
+    vi.stubGlobal(
+      "fetch",
+      async () =>
+        new Response(JSON.stringify({ user: { name: "Bia" } }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    );
+
+    const result = await replayExecution(
+      "http://example.test",
+      createFinishedGetExecution({ user: { name: "Ana" } }),
+    );
+
+    expect(result).toMatchObject({
+      outcome: "divergent",
+      differences: ["body"],
+    });
+  });
+
+  it("returns divergent when array items change position", async () => {
+    vi.stubGlobal(
+      "fetch",
+      async () =>
+        new Response(JSON.stringify(["b", "a"]), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    );
+
+    const result = await replayExecution(
+      "http://example.test",
+      createFinishedGetExecution(["a", "b"]),
     );
 
     expect(result).toMatchObject({
