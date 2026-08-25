@@ -3,7 +3,7 @@ import type { HttpResponseSnapshot } from "./http.js";
 
 export type ReplayOutcome = "matched" | "divergent" | "failed";
 
-export type ReplayDifference = "status" | "body";
+export type ReplayDifference = "status" | "headers" | "body";
 
 interface ReplayResultBase {
   readonly executionId: string;

@@ -138,6 +138,27 @@ describe("replayExecution", () => {
     });
   });
 
+  it("returns divergent when a relevant header changes", async () => {
+    vi.stubGlobal(
+      "fetch",
+      async () =>
+        new Response(JSON.stringify({ status: "ok" }), {
+          status: 200,
+          headers: { "content-type": "text/html" },
+        }),
+    );
+
+    const result = await replayExecution(
+      "http://example.test",
+      createFinishedGetExecution(),
+    );
+
+    expect(result).toMatchObject({
+      outcome: "divergent",
+      differences: ["headers"],
+    });
+  });
+
   it("returns failed when fetch throws an error", async () => {
     vi.stubGlobal("fetch", async () => {
       throw new TypeError("Network error");

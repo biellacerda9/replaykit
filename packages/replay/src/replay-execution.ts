@@ -1,5 +1,6 @@
 import type {
   FinishedExecution,
+  HttpHeaders,
   HttpResponseSnapshot,
   ReplayDifference,
   ReplayResult,
@@ -32,7 +33,7 @@ export async function replayExecution(
     });
     const replayedResponse: HttpResponseSnapshot = {
       status: response.status,
-      headers: {},
+      headers: Object.fromEntries(response.headers.entries()),
       body: await response.json(),
     };
     const differences = findDifferences(execution.response, replayedResponse);
@@ -70,6 +71,10 @@ function findDifferences(
 
   if (!compareTypes(originalResponse.body, replayedResponse.body)) {
     differences.push("body");
+  }
+
+  if (!compareHeaders(originalResponse.headers, replayedResponse.headers)) {
+    differences.push("headers");
   }
 
   return differences;
@@ -129,5 +134,49 @@ function compareTypes(originalValue: unknown, replayedValue: unknown): boolean {
     }
   }
 
+  return true;
+}
+
+const allowedHeaders = [
+  "content-type",
+  "cache-control",
+  "location",
+  "allow",
+  "content-language",
+  "content-encoding",
+  "vary",
+];
+
+function compareHeaders(
+  originalHeaders: HttpHeaders,
+  replayedHeaders: HttpHeaders,
+): boolean {
+  //para cada header da lista permitida
+  //procura o valor nos headers originais e nos headers replayed
+
+  for (const header of allowedHeaders) {
+    const originalValue = originalHeaders[header];
+    const replayedValue = replayedHeaders[header];
+
+    //nenhum dos dois possui -> continua
+    if (!originalValue && !replayedValue) {
+      continue;
+    }
+
+    //só um possui -> retorna false
+    if (!originalValue || !replayedValue) {
+      return false;
+    }
+
+    //os dois possuem -> compara os valores
+
+    if (originalValue === replayedValue) {
+      continue;
+    }
+
+    if (originalValue !== replayedValue) {
+      return false;
+    }
+  }
   return true;
 }
