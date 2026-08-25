@@ -179,4 +179,58 @@ describe("replayKitMiddleware", () => {
       token: "[REDACTED]",
     });
   });
+
+  it("does not capture an ignored exact path", () => {
+    let wasCaptured = false;
+    let nextWasCalled = false;
+    const request = {
+      method: "GET",
+      originalUrl: "/health?full=true",
+      headers: {},
+    } as Request;
+    const response = Object.assign(new EventEmitter(), {
+      statusCode: 200,
+      getHeaders: () => ({}),
+    }) as Response;
+
+    const middleware = replayKitMiddleware({
+      ignorePaths: ["/health"],
+      onExecutionFinished() {
+        wasCaptured = true;
+      },
+    });
+
+    middleware(request, response, () => {
+      nextWasCalled = true;
+    });
+    response.emit("finish");
+
+    expect(nextWasCalled).toBe(true);
+    expect(wasCaptured).toBe(false);
+  });
+
+  it("does not capture a path inside an ignored prefix", () => {
+    let wasCaptured = false;
+    const request = {
+      method: "GET",
+      originalUrl: "/executions/123/replays",
+      headers: {},
+    } as Request;
+    const response = Object.assign(new EventEmitter(), {
+      statusCode: 200,
+      getHeaders: () => ({}),
+    }) as Response;
+
+    const middleware = replayKitMiddleware({
+      ignorePathPrefixes: ["/executions"],
+      onExecutionFinished() {
+        wasCaptured = true;
+      },
+    });
+
+    middleware(request, response, () => undefined);
+    response.emit("finish");
+
+    expect(wasCaptured).toBe(false);
+  });
 });

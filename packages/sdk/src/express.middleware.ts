@@ -19,6 +19,30 @@ const sensitiveHeaderKeywords = ["token", "secret", "password", "key"];
 
 export interface ReplayKitMiddlewareOptions {
   readonly onExecutionFinished: (execution: Execution) => void;
+  //ignora rotas
+  readonly ignorePaths?: readonly string[];
+
+  //ignora rotas e suas subrotas
+  readonly ignorePathPrefixes?: readonly string[];
+}
+
+function getPathname(url: string): string {
+  return new URL(url, "http://localhost").pathname;
+}
+
+function shouldIgnorePath(
+  pathname: string,
+  options: ReplayKitMiddlewareOptions,
+): boolean {
+  if (options.ignorePaths?.includes(pathname)) {
+    return true;
+  }
+
+  return (
+    options.ignorePathPrefixes?.some(
+      (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+    ) ?? false
+  );
 }
 
 function sanitizeHeaders(
@@ -86,6 +110,11 @@ export function replayKitMiddleware(options: ReplayKitMiddlewareOptions) {
     res: Response,
     next: NextFunction,
   ): void {
+    if (shouldIgnorePath(getPathname(req.originalUrl), options)) {
+      next();
+      return;
+    }
+
     const execution = startExecution({
       //o sdk gera o id e o horario porque vai ser ele quem vai lidar com o mundo real -> o core não faz isso porque ele só recebe os dados e aplica as regras
 
