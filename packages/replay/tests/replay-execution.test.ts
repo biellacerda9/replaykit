@@ -183,38 +183,23 @@ describe("replayExecution", () => {
     });
   });
 
-  it("replays a POST request with its JSON body", async () => {
-    let requestOptions: RequestInit | undefined;
-
-    vi.stubGlobal(
-      "fetch",
-      async (_input: string | URL | Request, init?: RequestInit) => {
-        requestOptions = init;
-
-        return new Response(JSON.stringify({ message: "olá" }), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        });
-      },
-    );
+  it("does not replay a POST request", async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
 
     const result = await replayExecution(
       "http://example.test",
       createFinishedPostExecution(),
     );
 
-    expect(requestOptions).toMatchObject({
-      method: "POST",
-      headers: {
-        accept: "application/json",
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({ message: "olá" }),
-    });
     expect(result).toMatchObject({
-      outcome: "matched",
-      differences: [],
+      outcome: "failed",
+      error: {
+        name: "UnsupportedReplayMethodError",
+        message: "Only GET requests can be replayed",
+      },
     });
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   it("returns failed when fetch throws an error", async () => {
@@ -231,33 +216,5 @@ describe("replayExecution", () => {
       outcome: "failed",
       error: { name: "ReplayError", message: "Network error" },
     });
-  });
-
-  it("returns failed without calling fetch for an unsupported method", async () => {
-    const execution = startExecution({
-      id: "execution-2",
-      startedAt: "2026-08-24T17:00:00.000Z",
-      request: {
-        method: "PUT",
-        url: "/checkout",
-        headers: {},
-      },
-    });
-    const finished = finishExecution(
-      execution,
-      { status: 201, headers: {} },
-      "2026-08-24T17:00:00.100Z",
-    );
-
-    const fetchSpy = vi.fn();
-    vi.stubGlobal("fetch", fetchSpy);
-
-    const result = await replayExecution("http://example.test", finished);
-
-    expect(result).toMatchObject({
-      outcome: "failed",
-      error: { name: "UnsupportedReplayMethodError" },
-    });
-    expect(fetchSpy).not.toHaveBeenCalled();
   });
 });
