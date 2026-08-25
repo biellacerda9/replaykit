@@ -25,6 +25,30 @@ function createFinishedGetExecution(body: unknown = { status: "ok" }) {
   );
 }
 
+function createFinishedPostExecution() {
+  const body = { message: "olá" };
+  const execution = startExecution({
+    id: "execution-post-1",
+    startedAt: "2026-08-25T14:00:00.000Z",
+    request: {
+      method: "POST",
+      url: "/echo",
+      headers: { accept: "application/json" },
+      body,
+    },
+  });
+
+  return finishExecution(
+    execution,
+    {
+      status: 200,
+      headers: { "content-type": "application/json" },
+      body,
+    },
+    "2026-08-25T14:00:00.100Z",
+  );
+}
+
 describe("replayExecution", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -159,6 +183,40 @@ describe("replayExecution", () => {
     });
   });
 
+  it("replays a POST request with its JSON body", async () => {
+    let requestOptions: RequestInit | undefined;
+
+    vi.stubGlobal(
+      "fetch",
+      async (_input: string | URL | Request, init?: RequestInit) => {
+        requestOptions = init;
+
+        return new Response(JSON.stringify({ message: "olá" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      },
+    );
+
+    const result = await replayExecution(
+      "http://example.test",
+      createFinishedPostExecution(),
+    );
+
+    expect(requestOptions).toMatchObject({
+      method: "POST",
+      headers: {
+        accept: "application/json",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ message: "olá" }),
+    });
+    expect(result).toMatchObject({
+      outcome: "matched",
+      differences: [],
+    });
+  });
+
   it("returns failed when fetch throws an error", async () => {
     vi.stubGlobal("fetch", async () => {
       throw new TypeError("Network error");
@@ -175,12 +233,12 @@ describe("replayExecution", () => {
     });
   });
 
-  it("returns failed without calling fetch for a non-GET execution", async () => {
+  it("returns failed without calling fetch for an unsupported method", async () => {
     const execution = startExecution({
       id: "execution-2",
       startedAt: "2026-08-24T17:00:00.000Z",
       request: {
-        method: "POST",
+        method: "PUT",
         url: "/checkout",
         headers: {},
       },

@@ -10,40 +10,59 @@ export async function replayExecution(
   baseUrl: string,
   execution: FinishedExecution,
 ): Promise<ReplayResult> {
-  if (execution.request.method !== "GET") {
+  const accept = execution.request.headers.accept;
+  const acceptHeader = typeof accept === "string" ? accept : "application/json";
+  const url = new URL(execution.request.url, baseUrl);
+
+  try {
+    if (execution.request.method === "GET") {
+      const response = await fetch(url, {
+        method: "GET",
+        headers: { accept: acceptHeader },
+      });
+      const replayedResponse: HttpResponseSnapshot = {
+        status: response.status,
+        headers: Object.fromEntries(response.headers.entries()),
+        body: await response.json(),
+      };
+      const differences = findDifferences(execution.response, replayedResponse);
+
+      return {
+        executionId: execution.id,
+        outcome: differences.length === 0 ? "matched" : "divergent",
+        originalResponse: execution.response,
+        replayedResponse,
+        differences,
+      };
+    } else if (execution.request.method === "POST") {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { accept: acceptHeader, "content-type": "application/json" },
+        body: JSON.stringify(execution.request.body),
+      });
+      const replayedResponse: HttpResponseSnapshot = {
+        status: response.status,
+        headers: Object.fromEntries(response.headers.entries()),
+        body: await response.json(),
+      };
+      const differences = findDifferences(execution.response, replayedResponse);
+
+      return {
+        executionId: execution.id,
+        outcome: differences.length === 0 ? "matched" : "divergent",
+        originalResponse: execution.response,
+        replayedResponse,
+        differences,
+      };
+    }
     return {
       executionId: execution.id,
       outcome: "failed",
       originalResponse: execution.response,
       error: {
         name: "UnsupportedReplayMethodError",
-        message: "Only GET requests can be replayed",
+        message: "Only GET and POST requests can be replayed",
       },
-    };
-  }
-
-  const accept = execution.request.headers.accept;
-  const acceptHeader = typeof accept === "string" ? accept : "application/json";
-  const url = new URL(execution.request.url, baseUrl);
-
-  try {
-    const response = await fetch(url, {
-      method: "GET",
-      headers: { accept: acceptHeader },
-    });
-    const replayedResponse: HttpResponseSnapshot = {
-      status: response.status,
-      headers: Object.fromEntries(response.headers.entries()),
-      body: await response.json(),
-    };
-    const differences = findDifferences(execution.response, replayedResponse);
-
-    return {
-      executionId: execution.id,
-      outcome: differences.length === 0 ? "matched" : "divergent",
-      originalResponse: execution.response,
-      replayedResponse,
-      differences,
     };
   } catch (error) {
     return {
