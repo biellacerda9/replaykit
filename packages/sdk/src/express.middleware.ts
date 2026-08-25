@@ -24,6 +24,8 @@ export interface ReplayKitMiddlewareOptions {
 
   //ignora rotas e suas subrotas
   readonly ignorePathPrefixes?: readonly string[];
+
+  readonly sensitiveBodyFields?: readonly string[];
 }
 
 function getPathname(url: string): string {
@@ -75,13 +77,16 @@ function sanitizeHeaders(
 }
 
 //unknown porque o json pode ser qualquer coisa
-function sanitizeBody(body: unknown): unknown {
+function sanitizeBody(
+  body: unknown,
+  sensitiveBodyFields: readonly string[] | undefined,
+): unknown {
   if (body === null || body === undefined) {
     return body;
   }
 
   if (Array.isArray(body)) {
-    return body.map(sanitizeBody);
+    return body.map((item) => sanitizeBody(item, sensitiveBodyFields));
   }
 
   if (typeof body === "object" && body !== null) {
@@ -90,11 +95,12 @@ function sanitizeBody(body: unknown): unknown {
       const lowerKey = key.toLowerCase();
       if (
         sensitiveHeaderKeywords.some((keyword) => lowerKey.includes(keyword)) ||
-        sensitiveHeaderNames.includes(lowerKey)
+        sensitiveHeaderNames.includes(lowerKey) ||
+        sensitiveBodyFields?.some((field) => field.toLowerCase() === lowerKey)
       ) {
         sanitized[key] = "[REDACTED]";
       } else {
-        sanitized[key] = sanitizeBody(value);
+        sanitized[key] = sanitizeBody(value, sensitiveBodyFields);
       }
     }
     return sanitized;
@@ -126,7 +132,7 @@ export function replayKitMiddleware(options: ReplayKitMiddlewareOptions) {
         method: req.method,
         url: req.originalUrl,
         headers: sanitizeHeaders(req.headers),
-        body: sanitizeBody(req.body),
+        body: sanitizeBody(req.body, options.sensitiveBodyFields),
       },
     });
 
@@ -150,7 +156,7 @@ export function replayKitMiddleware(options: ReplayKitMiddlewareOptions) {
 
     let responseBody: unknown;
     res.json = function (body: unknown) {
-      responseBody = sanitizeBody(body);
+      responseBody = sanitizeBody(body, options.sensitiveBodyFields);
       return originalJson.call(this, body);
     };
 

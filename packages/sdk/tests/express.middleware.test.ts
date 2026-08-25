@@ -10,6 +10,7 @@ function captureExecution(
   requestHeaders: Record<string, string | string[] | undefined>,
   responseHeaders: Record<string, string | string[] | number | undefined>,
   requestBody?: unknown,
+  sensitiveBodyFields?: readonly string[],
 ): Execution {
   let capturedExecution: Execution | undefined;
   const request = {
@@ -24,6 +25,7 @@ function captureExecution(
   }) as Response;
 
   const middleware = replayKitMiddleware({
+    sensitiveBodyFields,
     onExecutionFinished(execution) {
       capturedExecution = execution;
     },
@@ -39,7 +41,10 @@ function captureExecution(
   return capturedExecution;
 }
 
-function captureJsonResponse(responseBody: unknown): {
+function captureJsonResponse(
+  responseBody: unknown,
+  sensitiveBodyFields?: readonly string[],
+): {
   execution: Execution;
   sentBody: unknown;
 } {
@@ -60,6 +65,7 @@ function captureJsonResponse(responseBody: unknown): {
   }) as Response;
 
   const middleware = replayKitMiddleware({
+    sensitiveBodyFields,
     onExecutionFinished(execution) {
       capturedExecution = execution;
     },
@@ -177,6 +183,44 @@ describe("replayKitMiddleware", () => {
     expect(execution.response.body).toEqual({
       message: "Session created",
       token: "[REDACTED]",
+    });
+  });
+
+  it("redacts configured request body fields without changing the original body", () => {
+    const requestBody = {
+      customer: {
+        cpf: "123.456.789-00",
+      },
+    };
+
+    const execution = captureExecution({}, {}, requestBody, ["CPF"]);
+
+    expect(execution.request.body).toEqual({
+      customer: {
+        cpf: "[REDACTED]",
+      },
+    });
+    expect(requestBody).toEqual({
+      customer: {
+        cpf: "123.456.789-00",
+      },
+    });
+  });
+
+  it("redacts configured response body fields", () => {
+    const { execution, sentBody } = captureJsonResponse(
+      { creditCard: "4111 1111 1111 1111" },
+      ["creditCard"],
+    );
+
+    expect(sentBody).toEqual({ creditCard: "4111 1111 1111 1111" });
+
+    if (execution.state !== "finished") {
+      throw new Error("Expected a finished execution");
+    }
+
+    expect(execution.response.body).toEqual({
+      creditCard: "[REDACTED]",
     });
   });
 
