@@ -1,4 +1,5 @@
 export type {
+  BodyOmission,
   HttpHeaders,
   HttpRequestSnapshot,
   HttpResponseSnapshot,
@@ -19,6 +20,7 @@ export type {
   ReplayDifference,
   ReplayOutcome,
   ReplayResult,
+  ReplaySkippedComparison,
   SuccessfulReplayResult,
 } from "./replay.js";
 

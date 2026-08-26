@@ -78,6 +78,34 @@ describe("SqliteExecutionStore", () => {
     });
   });
 
+  it("persists body omission metadata", () => {
+    withStore((store) => {
+      const running = startExecution({
+        id: "execution-omitted-body",
+        startedAt: "2026-08-25T17:00:00.000Z",
+        request: {
+          method: "POST",
+          url: "/import",
+          headers: { "content-type": "application/json" },
+          bodyOmitted: { reason: "size-limit", sizeBytes: 200000 },
+        },
+      });
+      const finished = finishExecution(
+        running,
+        {
+          status: 202,
+          headers: { "content-type": "application/json" },
+          bodyOmitted: { reason: "size-limit", sizeBytes: 300000 },
+        },
+        "2026-08-25T17:00:00.100Z",
+      );
+
+      store.save(finished);
+
+      expect(store.findById(finished.id)).toEqual(finished);
+    });
+  });
+
   it("numbers replay attempts for the same execution", () => {
     withStore((store) => {
       const running = createRunningExecution(
@@ -98,6 +126,7 @@ describe("SqliteExecutionStore", () => {
           body: { status: "unavailable" },
         },
         differences: ["body"],
+        skippedComparisons: ["body"],
       };
 
       store.save(finished);
@@ -107,6 +136,7 @@ describe("SqliteExecutionStore", () => {
       expect(firstAttempt.attemptNumber).toBe(1);
       expect(secondAttempt.attemptNumber).toBe(2);
       expect(firstAttempt.differences).toEqual(["body"]);
+      expect(firstAttempt.skippedComparisons).toEqual(["body"]);
       expect(
         store
           .listReplayAttempts(finished.id)
@@ -116,6 +146,11 @@ describe("SqliteExecutionStore", () => {
         store
           .listReplayAttempts(finished.id)
           .map((attempt) => attempt.differences),
+      ).toEqual([["body"], ["body"]]);
+      expect(
+        store
+          .listReplayAttempts(finished.id)
+          .map((attempt) => attempt.skippedComparisons),
       ).toEqual([["body"], ["body"]]);
     });
   });

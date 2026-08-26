@@ -4,6 +4,7 @@ import type {
   HttpResponseSnapshot,
   ReplayDifference,
   ReplayResult,
+  ReplaySkippedComparison,
 } from "@replaykit/core";
 
 export async function replayExecution(
@@ -36,7 +37,10 @@ export async function replayExecution(
       headers: Object.fromEntries(response.headers.entries()),
       body: await response.json(),
     };
-    const differences = findDifferences(execution.response, replayedResponse);
+    const { differences, skippedComparisons } = findDifferences(
+      execution.response,
+      replayedResponse,
+    );
 
     return {
       executionId: execution.id,
@@ -44,6 +48,7 @@ export async function replayExecution(
       originalResponse: execution.response,
       replayedResponse,
       differences,
+      skippedComparisons,
     };
   } catch (error) {
     return {
@@ -62,14 +67,23 @@ export async function replayExecution(
 function findDifferences(
   originalResponse: HttpResponseSnapshot,
   replayedResponse: HttpResponseSnapshot,
-): ReplayDifference[] {
+): {
+  differences: ReplayDifference[];
+  skippedComparisons: ReplaySkippedComparison[];
+} {
   const differences: ReplayDifference[] = [];
+  const skippedComparisons: ReplaySkippedComparison[] = [];
 
   if (originalResponse.status !== replayedResponse.status) {
     differences.push("status");
   }
 
-  if (!compareTypes(originalResponse.body, replayedResponse.body)) {
+  if (
+    originalResponse.bodyOmitted !== undefined ||
+    replayedResponse.bodyOmitted !== undefined
+  ) {
+    skippedComparisons.push("body");
+  } else if (!compareTypes(originalResponse.body, replayedResponse.body)) {
     differences.push("body");
   }
 
@@ -77,7 +91,7 @@ function findDifferences(
     differences.push("headers");
   }
 
-  return differences;
+  return { differences, skippedComparisons };
 }
 
 function compareTypes(originalValue: unknown, replayedValue: unknown): boolean {

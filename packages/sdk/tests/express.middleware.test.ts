@@ -6,11 +6,16 @@ import { describe, expect, it } from "vitest";
 import type { Execution } from "@replaykit/core";
 import { replayKitMiddleware } from "../src/index.js";
 
+interface CaptureOptions {
+  readonly sensitiveBodyFields?: readonly string[];
+  readonly maxBodySizeBytes?: number;
+}
+
 function captureExecution(
   requestHeaders: Record<string, string | string[] | undefined>,
   responseHeaders: Record<string, string | string[] | number | undefined>,
   requestBody?: unknown,
-  sensitiveBodyFields?: readonly string[],
+  options?: CaptureOptions,
 ): Execution {
   let capturedExecution: Execution | undefined;
   const request = {
@@ -25,7 +30,7 @@ function captureExecution(
   }) as Response;
 
   const middleware = replayKitMiddleware({
-    sensitiveBodyFields,
+    ...options,
     onExecutionFinished(execution) {
       capturedExecution = execution;
     },
@@ -43,7 +48,7 @@ function captureExecution(
 
 function captureJsonResponse(
   responseBody: unknown,
-  sensitiveBodyFields?: readonly string[],
+  options?: CaptureOptions,
 ): {
   execution: Execution;
   sentBody: unknown;
@@ -65,7 +70,7 @@ function captureJsonResponse(
   }) as Response;
 
   const middleware = replayKitMiddleware({
-    sensitiveBodyFields,
+    ...options,
     onExecutionFinished(execution) {
       capturedExecution = execution;
     },
@@ -193,7 +198,9 @@ describe("replayKitMiddleware", () => {
       },
     };
 
-    const execution = captureExecution({}, {}, requestBody, ["CPF"]);
+    const execution = captureExecution({}, {}, requestBody, {
+      sensitiveBodyFields: ["CPF"],
+    });
 
     expect(execution.request.body).toEqual({
       customer: {
@@ -210,7 +217,7 @@ describe("replayKitMiddleware", () => {
   it("redacts configured response body fields", () => {
     const { execution, sentBody } = captureJsonResponse(
       { creditCard: "4111 1111 1111 1111" },
-      ["creditCard"],
+      { sensitiveBodyFields: ["creditCard"] },
     );
 
     expect(sentBody).toEqual({ creditCard: "4111 1111 1111 1111" });
@@ -222,6 +229,40 @@ describe("replayKitMiddleware", () => {
     expect(execution.response.body).toEqual({
       creditCard: "[REDACTED]",
     });
+  });
+
+  it("omits a request body that exceeds the configured size limit", () => {
+    const execution = captureExecution(
+      {},
+      {},
+      { message: "this body is too large" },
+      { maxBodySizeBytes: 10 },
+    );
+
+    expect(execution.request.body).toBeUndefined();
+    expect(execution.request.bodyOmitted).toMatchObject({
+      reason: "size-limit",
+    });
+    expect(execution.request.bodyOmitted?.sizeBytes).toBeGreaterThan(10);
+  });
+
+  it("omits a response body without changing the body sent to the client", () => {
+    const responseBody = { message: "this body is too large" };
+    const { execution, sentBody } = captureJsonResponse(responseBody, {
+      maxBodySizeBytes: 10,
+    });
+
+    expect(sentBody).toEqual(responseBody);
+
+    if (execution.state !== "finished") {
+      throw new Error("Expected a finished execution");
+    }
+
+    expect(execution.response.body).toBeUndefined();
+    expect(execution.response.bodyOmitted).toMatchObject({
+      reason: "size-limit",
+    });
+    expect(execution.response.bodyOmitted?.sizeBytes).toBeGreaterThan(10);
   });
 
   it("does not capture an ignored exact path", () => {

@@ -6,6 +6,7 @@ import { DatabaseSync } from "node:sqlite";
 import type {
   Execution,
   ExecutionError,
+  BodyOmission,
   HttpHeaders,
   HttpRequestSnapshot,
   HttpResponseSnapshot,
@@ -24,9 +25,11 @@ interface ExecutionRow {
   readonly request_url: string;
   readonly request_headers_json: string;
   readonly request_body_json: string | null;
+  readonly request_body_omitted_json: string | null;
   readonly response_status: number | null;
   readonly response_headers_json: string | null;
   readonly response_body_json: string | null;
+  readonly response_body_omitted_json: string | null;
   readonly error_name: string | null;
   readonly error_message: string | null;
   readonly error_stack: string | null;
@@ -41,6 +44,7 @@ interface ReplayAttemptRow {
   readonly replayed_at: string;
   readonly outcome: ReplayAttempt["outcome"];
   readonly differences_json: string;
+  readonly skipped_comparisons_json: string;
   readonly replayed_status: number | null;
   readonly replayed_headers_json: string | null;
   readonly replayed_body_json: string | null;
@@ -67,9 +71,11 @@ export class SqliteExecutionStore {
         request_url TEXT NOT NULL,
         request_headers_json TEXT NOT NULL,
         request_body_json TEXT,
+        request_body_omitted_json TEXT,
         response_status INTEGER,
         response_headers_json TEXT,
         response_body_json TEXT,
+        response_body_omitted_json TEXT,
         error_name TEXT,
         error_message TEXT,
         error_stack TEXT
@@ -83,6 +89,7 @@ export class SqliteExecutionStore {
         replayed_at TEXT NOT NULL,
         outcome TEXT NOT NULL,
         differences_json TEXT NOT NULL DEFAULT '[]',
+        skipped_comparisons_json TEXT NOT NULL DEFAULT '[]',
         replayed_status INTEGER,
         replayed_headers_json TEXT,
         replayed_body_json TEXT,
@@ -93,15 +100,30 @@ export class SqliteExecutionStore {
       )
     `);
 
-    const columns = this.database
-      .prepare("PRAGMA table_info(replay_attempts)")
-      .all() as { name: string }[];
-
-    if (!columns.some((column) => column.name === "differences_json")) {
-      this.database.exec(
-        "ALTER TABLE replay_attempts ADD COLUMN differences_json TEXT NOT NULL DEFAULT '[]'",
-      );
-    }
+    ensureColumn(
+      this.database,
+      "executions",
+      "request_body_omitted_json",
+      "TEXT",
+    );
+    ensureColumn(
+      this.database,
+      "executions",
+      "response_body_omitted_json",
+      "TEXT",
+    );
+    ensureColumn(
+      this.database,
+      "replay_attempts",
+      "differences_json",
+      "TEXT NOT NULL DEFAULT '[]'",
+    );
+    ensureColumn(
+      this.database,
+      "replay_attempts",
+      "skipped_comparisons_json",
+      "TEXT NOT NULL DEFAULT '[]'",
+    );
   }
 
   save(execution: Execution): void {
@@ -112,13 +134,13 @@ export class SqliteExecutionStore {
         `
           INSERT INTO executions (
             id, state, started_at, finished_at, duration_ms,
-            request_method, request_url, request_headers_json, request_body_json,
-            response_status, response_headers_json, response_body_json,
+            request_method, request_url, request_headers_json, request_body_json, request_body_omitted_json,
+            response_status, response_headers_json, response_body_json, response_body_omitted_json,
             error_name, error_message, error_stack
           ) VALUES (
             $id, $state, $started_at, $finished_at, $duration_ms,
-            $request_method, $request_url, $request_headers_json, $request_body_json,
-            $response_status, $response_headers_json, $response_body_json,
+            $request_method, $request_url, $request_headers_json, $request_body_json, $request_body_omitted_json,
+            $response_status, $response_headers_json, $response_body_json, $response_body_omitted_json,
             $error_name, $error_message, $error_stack
           )
           ON CONFLICT(id) DO UPDATE SET
@@ -130,9 +152,11 @@ export class SqliteExecutionStore {
             request_url = excluded.request_url,
             request_headers_json = excluded.request_headers_json,
             request_body_json = excluded.request_body_json,
+            request_body_omitted_json = excluded.request_body_omitted_json,
             response_status = excluded.response_status,
             response_headers_json = excluded.response_headers_json,
             response_body_json = excluded.response_body_json,
+            response_body_omitted_json = excluded.response_body_omitted_json,
             error_name = excluded.error_name,
             error_message = excluded.error_message,
             error_stack = excluded.error_stack
@@ -170,11 +194,11 @@ export class SqliteExecutionStore {
       .prepare(
         `
           INSERT INTO replay_attempts (
-          id, execution_id, attempt_number, replayed_at, outcome, differences_json,
+          id, execution_id, attempt_number, replayed_at, outcome, differences_json, skipped_comparisons_json,
           replayed_status, replayed_headers_json, replayed_body_json,
             error_name, error_message
           ) VALUES (
-          $id, $execution_id, $attempt_number, $replayed_at, $outcome, $differences_json,
+          $id, $execution_id, $attempt_number, $replayed_at, $outcome, $differences_json, $skipped_comparisons_json,
           $replayed_status, $replayed_headers_json, $replayed_body_json,
             $error_name, $error_message
           )
@@ -215,11 +239,14 @@ function toParameters(execution: Execution): ExecutionParameters {
     request_url: execution.request.url,
     request_headers_json: stringify(execution.request.headers) ?? "{}",
     request_body_json: stringify(execution.request.body),
+    request_body_omitted_json: stringify(execution.request.bodyOmitted),
     response_status: response?.status ?? null,
     response_headers_json:
       response === undefined ? null : stringify(response.headers),
     response_body_json:
       response === undefined ? null : stringify(response.body),
+    response_body_omitted_json:
+      response === undefined ? null : stringify(response.bodyOmitted),
     error_name: error?.name ?? null,
     error_message: error?.message ?? null,
     error_stack: error?.stack ?? null,
@@ -237,6 +264,8 @@ function toReplayAttempt(
     replayedAt: new Date().toISOString(),
     outcome: result.outcome,
     differences: result.outcome === "failed" ? [] : result.differences,
+    skippedComparisons:
+      result.outcome === "failed" ? [] : result.skippedComparisons,
     ...(result.outcome === "failed"
       ? { error: result.error }
       : { replayedResponse: result.replayedResponse }),
@@ -255,6 +284,7 @@ function toReplayAttemptParameters(
     replayed_at: attempt.replayedAt,
     outcome: attempt.outcome,
     differences_json: stringify(attempt.differences) ?? "[]",
+    skipped_comparisons_json: stringify(attempt.skippedComparisons) ?? "[]",
     replayed_status: response?.status ?? null,
     replayed_headers_json:
       response === undefined ? null : stringify(response.headers),
@@ -278,6 +308,9 @@ function fromReplayAttemptRow(row: ReplayAttemptRow): ReplayAttempt {
       replayedAt: row.replayed_at,
       outcome: "failed",
       differences: parseJson(row.differences_json) as ReplayDifference[],
+      skippedComparisons: parseJson(
+        row.skipped_comparisons_json,
+      ) as ReplayAttempt["skippedComparisons"],
       error: {
         name: row.error_name,
         message: row.error_message,
@@ -296,6 +329,9 @@ function fromReplayAttemptRow(row: ReplayAttemptRow): ReplayAttempt {
     replayedAt: row.replayed_at,
     outcome: row.outcome,
     differences: parseJson(row.differences_json) as ReplayDifference[],
+    skippedComparisons: parseJson(
+      row.skipped_comparisons_json,
+    ) as ReplayAttempt["skippedComparisons"],
     replayedResponse: {
       status: row.replayed_status,
       headers: parseJson(row.replayed_headers_json) as HttpHeaders,
@@ -314,6 +350,11 @@ function fromRow(row: ExecutionRow): Execution {
     ...(row.request_body_json === null
       ? {}
       : { body: parseJson(row.request_body_json) }),
+    ...(row.request_body_omitted_json === null
+      ? {}
+      : {
+          bodyOmitted: parseJson(row.request_body_omitted_json) as BodyOmission,
+        }),
   };
 
   if (row.state === "running") {
@@ -362,6 +403,13 @@ function fromRow(row: ExecutionRow): Execution {
     ...(row.response_body_json === null
       ? {}
       : { body: parseJson(row.response_body_json) }),
+    ...(row.response_body_omitted_json === null
+      ? {}
+      : {
+          bodyOmitted: parseJson(
+            row.response_body_omitted_json,
+          ) as BodyOmission,
+        }),
   };
 
   return {
@@ -394,4 +442,19 @@ function stringify(value: unknown): string | null {
 
 function parseJson(value: string): unknown {
   return JSON.parse(value);
+}
+
+function ensureColumn(
+  database: DatabaseSync,
+  table: string,
+  column: string,
+  definition: string,
+): void {
+  const columns = database.prepare(`PRAGMA table_info(${table})`).all() as {
+    name: string;
+  }[];
+
+  if (!columns.some((currentColumn) => currentColumn.name === column)) {
+    database.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
 }

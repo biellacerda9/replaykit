@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import {
   finishExecution,
   startExecution,
+  type BodyOmission,
   type Execution,
 } from "@replaykit/core";
 import type { NextFunction, Request, Response } from "express";
@@ -16,6 +17,7 @@ const sensitiveHeaderNames = [
 ];
 
 const sensitiveHeaderKeywords = ["token", "secret", "password", "key"];
+const defaultMaxBodySizeBytes = 100 * 1024;
 
 export interface ReplayKitMiddlewareOptions {
   readonly onExecutionFinished: (execution: Execution) => void;
@@ -26,6 +28,12 @@ export interface ReplayKitMiddlewareOptions {
   readonly ignorePathPrefixes?: readonly string[];
 
   readonly sensitiveBodyFields?: readonly string[];
+  readonly maxBodySizeBytes?: number;
+}
+
+interface CapturedBody {
+  readonly body?: unknown;
+  readonly bodyOmitted?: BodyOmission;
 }
 
 function getPathname(url: string): string {
@@ -103,14 +111,42 @@ function sanitizeBody(
         sanitized[key] = sanitizeBody(value, sensitiveBodyFields);
       }
     }
+
     return sanitized;
   }
 
   return body;
 }
 
+function captureBody(
+  body: unknown,
+  sensitiveBodyFields: readonly string[] | undefined,
+  maxBodySizeBytes: number,
+): CapturedBody {
+  const sanitizedBody = sanitizeBody(body, sensitiveBodyFields);
+  const serializedBody = JSON.stringify(sanitizedBody);
+  const sizeBytes = Buffer.byteLength(serializedBody ?? "", "utf8");
+
+  if (sizeBytes > maxBodySizeBytes) {
+    return {
+      bodyOmitted: {
+        reason: "size-limit",
+        sizeBytes,
+      },
+    };
+  }
+
+  return sanitizedBody === undefined ? {} : { body: sanitizedBody };
+}
+
 //cria um middleware básico que registra uma requisição e resposta HTTP, e chama a função onExecutionFinished quando a execução termina
 export function replayKitMiddleware(options: ReplayKitMiddlewareOptions) {
+  const maxBodySizeBytes = options.maxBodySizeBytes ?? defaultMaxBodySizeBytes;
+
+  if (!Number.isInteger(maxBodySizeBytes) || maxBodySizeBytes < 0) {
+    throw new Error("maxBodySizeBytes must be a non-negative integer");
+  }
+
   return function middleware(
     req: Request,
     res: Response,
@@ -120,6 +156,12 @@ export function replayKitMiddleware(options: ReplayKitMiddlewareOptions) {
       next();
       return;
     }
+
+    const requestBody = captureBody(
+      req.body,
+      options.sensitiveBodyFields,
+      maxBodySizeBytes,
+    );
 
     const execution = startExecution({
       //o sdk gera o id e o horario porque vai ser ele quem vai lidar com o mundo real -> o core não faz isso porque ele só recebe os dados e aplica as regras
@@ -132,18 +174,20 @@ export function replayKitMiddleware(options: ReplayKitMiddlewareOptions) {
         method: req.method,
         url: req.originalUrl,
         headers: sanitizeHeaders(req.headers),
-        body: sanitizeBody(req.body, options.sensitiveBodyFields),
+        ...requestBody,
       },
     });
 
     // on é um ouvinte de eventos
+    let responseBody: CapturedBody = {};
+
     res.on("finish", () => {
       const finishedExecution = finishExecution(
         execution,
         {
           status: res.statusCode,
           headers: sanitizeHeaders(res.getHeaders()),
-          body: responseBody,
+          ...responseBody,
         },
         new Date().toISOString(),
       );
@@ -154,9 +198,12 @@ export function replayKitMiddleware(options: ReplayKitMiddlewareOptions) {
     //aqui faço uma copia do json original, e sobrescrevo o json do express para interceptar a resposta e sanitizar o body antes de enviar para o core
     const originalJson = res.json;
 
-    let responseBody: unknown;
     res.json = function (body: unknown) {
-      responseBody = sanitizeBody(body, options.sensitiveBodyFields);
+      responseBody = captureBody(
+        body,
+        options.sensitiveBodyFields,
+        maxBodySizeBytes,
+      );
       return originalJson.call(this, body);
     };
 

@@ -183,6 +183,35 @@ describe("replayExecution", () => {
     });
   });
 
+  it("skips the body comparison when the original body was omitted", async () => {
+    vi.stubGlobal(
+      "fetch",
+      async () =>
+        new Response(JSON.stringify({ status: "unavailable" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    );
+
+    const original = createFinishedGetExecution();
+    const execution = {
+      ...original,
+      response: {
+        status: 200,
+        headers: { "content-type": "application/json" },
+        bodyOmitted: { reason: "size-limit" as const, sizeBytes: 200000 },
+      },
+    };
+
+    const result = await replayExecution("http://example.test", execution);
+
+    expect(result).toMatchObject({
+      outcome: "matched",
+      differences: [],
+      skippedComparisons: ["body"],
+    });
+  });
+
   it("does not replay a POST request", async () => {
     const fetchSpy = vi.fn();
     vi.stubGlobal("fetch", fetchSpy);
