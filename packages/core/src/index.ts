@@ -29,3 +29,5 @@ export {
   startExecution,
   abortExecution,
 } from "./execution.js";
+
+export type { ExecutionStore } from "./execution-store.js";

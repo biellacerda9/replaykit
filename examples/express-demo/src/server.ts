@@ -18,7 +18,10 @@ app.use(
     ignorePaths: ["/health"],
     ignorePathPrefixes: ["/executions", "/demo"],
     onExecutionFinished(execution) {
-      executionStore.save(execution);
+      void executionStore.save(execution).catch((error) => {
+        console.error("Could not save execution to the store:", error);
+      });
+
       console.log("ReplayKit captured execution:");
       console.log(JSON.stringify(execution, null, 2));
     },
@@ -46,8 +49,8 @@ app.post("/session", (_request, response) => {
   });
 });
 
-app.get("/executions", (_request, response) => {
-  const executions = executionStore.list();
+app.get("/executions", async (_request, response) => {
+  const executions = await executionStore.list();
   const summaries = executions.map((execution) => ({
     id: execution.id,
     state: execution.state,
@@ -61,8 +64,8 @@ app.get("/executions", (_request, response) => {
   response.json(summaries);
 });
 
-app.get("/executions/:id", (request, response) => {
-  const execution = executionStore.findById(request.params.id);
+app.get("/executions/:id", async (request, response) => {
+  const execution = await executionStore.findById(request.params.id);
   if (!execution) {
     response.status(404).json({ error: "Execution not found" });
     return;
@@ -74,7 +77,7 @@ const baseUrl = `http://localhost:${port}`;
 
 app.post("/executions/:id/replay", async (request, response) => {
   const id = request.params.id;
-  const execution = executionStore.findById(id);
+  const execution = await executionStore.findById(id);
   if (!execution) {
     response.status(404).json({ error: "Execution not found" });
     return;
