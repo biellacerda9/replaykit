@@ -10,9 +10,11 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@replaykit/core": "workspace:*",
     "@replaykit/replay": "workspace:*",
     "@replaykit/sdk": "workspace:*",
     "@replaykit/storage": "workspace:*",
+    "@replaykit/storage-postgres": "workspace:*",
     "express": "^5.1.0"
   },
   "devDependencies": {
