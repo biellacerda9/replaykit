@@ -13,6 +13,7 @@ import type {
   ReplayAttempt,
   ReplayDifference,
   ReplayResult,
+  ExecutionStore,
 } from "@replaykit/core";
 
 interface ExecutionRow {
@@ -54,7 +55,7 @@ interface ReplayAttemptRow {
 
 type ReplayAttemptParameters = ReplayAttemptRow;
 
-export class SqliteExecutionStore {
+export class SqliteExecutionStore implements ExecutionStore {
   private readonly database: DatabaseSync;
 
   constructor(databasePath = resolve(process.cwd(), ".data", "replaykit.db")) {
@@ -126,7 +127,7 @@ export class SqliteExecutionStore {
     );
   }
 
-  save(execution: Execution): void {
+  async save(execution: Execution): Promise<void> {
     const parameters = toParameters(execution);
 
     this.database
@@ -165,7 +166,7 @@ export class SqliteExecutionStore {
       .run({ ...parameters });
   }
 
-  findById(id: string): Execution | undefined {
+  async findById(id: string): Promise<Execution | undefined> {
     const row = this.database
       .prepare("SELECT * FROM executions WHERE id = ?")
       .get(id) as unknown as ExecutionRow | undefined;
@@ -173,7 +174,7 @@ export class SqliteExecutionStore {
     return row === undefined ? undefined : fromRow(row);
   }
 
-  list(): Execution[] {
+  async list(): Promise<Execution[]> {
     const rows = this.database
       .prepare("SELECT * FROM executions ORDER BY started_at DESC")
       .all() as unknown as ExecutionRow[];
@@ -181,7 +182,7 @@ export class SqliteExecutionStore {
     return rows.map(fromRow);
   }
 
-  saveReplayAttempt(result: ReplayResult): ReplayAttempt {
+  async saveReplayAttempt(result: ReplayResult): Promise<ReplayAttempt> {
     const row = this.database
       .prepare(
         "SELECT COUNT(*) AS count FROM replay_attempts WHERE execution_id = ?",
@@ -209,7 +210,7 @@ export class SqliteExecutionStore {
     return attempt;
   }
 
-  listReplayAttempts(executionId: string): ReplayAttempt[] {
+  async listReplayAttempts(executionId: string): Promise<ReplayAttempt[]> {
     const rows = this.database
       .prepare(
         "SELECT * FROM replay_attempts WHERE execution_id = ? ORDER BY attempt_number ASC",

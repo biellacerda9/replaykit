@@ -8,12 +8,14 @@ import { describe, expect, it } from "vitest";
 
 import { SqliteExecutionStore } from "../src/index.js";
 
-function withStore(test: (store: SqliteExecutionStore) => void): void {
+async function withStore(
+  test: (store: SqliteExecutionStore) => Promise<void>,
+): Promise<void> {
   const directory = mkdtempSync(join(tmpdir(), "replaykit-storage-"));
   const store = new SqliteExecutionStore(join(directory, "replaykit.db"));
 
   try {
-    test(store);
+    await test(store);
   } finally {
     store.close();
     rmSync(directory, { recursive: true, force: true });
@@ -34,8 +36,8 @@ function createRunningExecution(id: string, startedAt: string) {
 }
 
 describe("SqliteExecutionStore", () => {
-  it("updates an execution when the same id is saved again", () => {
-    withStore((store) => {
+  it("updates an execution when the same id is saved again", async () => {
+    await withStore(async (store) => {
       const running = createRunningExecution(
         "execution-1",
         "2026-08-23T17:00:00.000Z",
@@ -50,15 +52,15 @@ describe("SqliteExecutionStore", () => {
         "2026-08-23T17:00:00.100Z",
       );
 
-      store.save(running);
-      store.save(finished);
+      await store.save(running);
+      await store.save(finished);
 
-      expect(store.findById("execution-1")).toEqual(finished);
+      await expect(store.findById("execution-1")).resolves.toEqual(finished);
     });
   });
 
-  it("lists the most recent executions first", () => {
-    withStore((store) => {
+  it("lists the most recent executions first", async () => {
+    await withStore(async (store) => {
       const oldest = createRunningExecution(
         "execution-1",
         "2026-08-23T17:00:00.000Z",
@@ -68,18 +70,18 @@ describe("SqliteExecutionStore", () => {
         "2026-08-23T17:01:00.000Z",
       );
 
-      store.save(oldest);
-      store.save(newest);
+      await store.save(oldest);
+      await store.save(newest);
 
-      expect(store.list().map((execution) => execution.id)).toEqual([
+      expect((await store.list()).map((execution) => execution.id)).toEqual([
         "execution-2",
         "execution-1",
       ]);
     });
   });
 
-  it("persists body omission metadata", () => {
-    withStore((store) => {
+  it("persists body omission metadata", async () => {
+    await withStore(async (store) => {
       const running = startExecution({
         id: "execution-omitted-body",
         startedAt: "2026-08-25T17:00:00.000Z",
@@ -100,14 +102,14 @@ describe("SqliteExecutionStore", () => {
         "2026-08-25T17:00:00.100Z",
       );
 
-      store.save(finished);
+      await store.save(finished);
 
-      expect(store.findById(finished.id)).toEqual(finished);
+      await expect(store.findById(finished.id)).resolves.toEqual(finished);
     });
   });
 
-  it("numbers replay attempts for the same execution", () => {
-    withStore((store) => {
+  it("numbers replay attempts for the same execution", async () => {
+    await withStore(async (store) => {
       const running = createRunningExecution(
         "execution-1",
         "2026-08-24T17:00:00.000Z",
@@ -129,28 +131,28 @@ describe("SqliteExecutionStore", () => {
         skippedComparisons: ["body"],
       };
 
-      store.save(finished);
-      const firstAttempt = store.saveReplayAttempt(result);
-      const secondAttempt = store.saveReplayAttempt(result);
+      await store.save(finished);
+      const firstAttempt = await store.saveReplayAttempt(result);
+      const secondAttempt = await store.saveReplayAttempt(result);
 
       expect(firstAttempt.attemptNumber).toBe(1);
       expect(secondAttempt.attemptNumber).toBe(2);
       expect(firstAttempt.differences).toEqual(["body"]);
       expect(firstAttempt.skippedComparisons).toEqual(["body"]);
       expect(
-        store
-          .listReplayAttempts(finished.id)
-          .map((attempt) => attempt.attemptNumber),
+        (await store.listReplayAttempts(finished.id)).map(
+          (attempt) => attempt.attemptNumber,
+        ),
       ).toEqual([1, 2]);
       expect(
-        store
-          .listReplayAttempts(finished.id)
-          .map((attempt) => attempt.differences),
+        (await store.listReplayAttempts(finished.id)).map(
+          (attempt) => attempt.differences,
+        ),
       ).toEqual([["body"], ["body"]]);
       expect(
-        store
-          .listReplayAttempts(finished.id)
-          .map((attempt) => attempt.skippedComparisons),
+        (await store.listReplayAttempts(finished.id)).map(
+          (attempt) => attempt.skippedComparisons,
+        ),
       ).toEqual([["body"], ["body"]]);
     });
   });
