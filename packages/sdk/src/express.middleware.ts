@@ -118,11 +118,29 @@ function sanitizeBody(
   return body;
 }
 
+function isJson(contentType: string | undefined): boolean {
+  return contentType?.toLowerCase().includes("application/json") ?? false;
+}
+
 function captureBody(
   body: unknown,
   sensitiveBodyFields: readonly string[] | undefined,
   maxBodySizeBytes: number,
+  contentType: string | undefined,
 ): CapturedBody {
+  if (body === undefined) {
+    return {};
+  }
+
+  if (contentType !== undefined && !isJson(contentType)) {
+    return {
+      bodyOmitted: {
+        reason: "unsupported-content-type",
+        contentType,
+      },
+    };
+  }
+
   const sanitizedBody = sanitizeBody(body, sensitiveBodyFields);
   const serializedBody = JSON.stringify(sanitizedBody);
   const sizeBytes = Buffer.byteLength(serializedBody ?? "", "utf8");
@@ -156,11 +174,13 @@ export function replayKitMiddleware(options: ReplayKitMiddlewareOptions) {
       next();
       return;
     }
+    const contentType = req.get("Content-Type");
 
     const requestBody = captureBody(
       req.body,
       options.sensitiveBodyFields,
       maxBodySizeBytes,
+      contentType,
     );
 
     const execution = startExecution({
@@ -203,6 +223,7 @@ export function replayKitMiddleware(options: ReplayKitMiddlewareOptions) {
         body,
         options.sensitiveBodyFields,
         maxBodySizeBytes,
+        "application/json",
       );
       return originalJson.call(this, body);
     };

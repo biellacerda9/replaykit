@@ -1,9 +1,16 @@
 export type HttpHeaders = Readonly<Record<string, string | readonly string[]>>;
 
-export interface BodyOmission {
+export interface BodyOmissionSize {
   readonly reason: "size-limit";
   readonly sizeBytes: number;
 }
+
+export interface BodyOmissionNotJson {
+  readonly reason: "unsupported-content-type";
+  readonly contentType: string | undefined;
+}
+
+export type BodyOmission = BodyOmissionSize | BodyOmissionNotJson;
 
 export interface HttpRequestSnapshot {
   readonly method: string;
