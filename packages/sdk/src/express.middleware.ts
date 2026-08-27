@@ -84,6 +84,18 @@ function sanitizeHeaders(
   return safeHeaders;
 }
 
+function getContentType(
+  headers: Record<string, string | string[] | number | undefined>,
+): string | undefined {
+  const contentType = headers["content-type"];
+
+  if (Array.isArray(contentType)) {
+    return contentType[0];
+  }
+
+  return typeof contentType === "string" ? contentType : undefined;
+}
+
 //unknown porque o json pode ser qualquer coisa
 function sanitizeBody(
   body: unknown,
@@ -119,7 +131,13 @@ function sanitizeBody(
 }
 
 function isJson(contentType: string | undefined): boolean {
-  return contentType?.toLowerCase().includes("application/json") ?? false;
+  if (contentType === undefined) {
+    return true;
+  }
+
+  const mediaType = (contentType.split(";", 1)[0] ?? "").trim().toLowerCase();
+
+  return mediaType === "application/json" || mediaType.endsWith("+json");
 }
 
 function captureBody(
@@ -174,7 +192,7 @@ export function replayKitMiddleware(options: ReplayKitMiddlewareOptions) {
       next();
       return;
     }
-    const contentType = req.get("Content-Type");
+    const contentType = getContentType(req.headers);
 
     const requestBody = captureBody(
       req.body,

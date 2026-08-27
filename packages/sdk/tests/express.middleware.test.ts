@@ -265,6 +265,31 @@ describe("replayKitMiddleware", () => {
     expect(execution.response.bodyOmitted?.sizeBytes).toBeGreaterThan(10);
   });
 
+  it("omits a request body with an unsupported content type", () => {
+    const execution = captureExecution(
+      { "content-type": "image/png" },
+      {},
+      Buffer.from("image-content"),
+    );
+
+    expect(execution.request.body).toBeUndefined();
+    expect(execution.request.bodyOmitted).toEqual({
+      reason: "unsupported-content-type",
+      contentType: "image/png",
+    });
+  });
+
+  it("captures a request body with a JSON content type and parameters", () => {
+    const execution = captureExecution(
+      { "content-type": "application/problem+json; charset=utf-8" },
+      {},
+      { title: "Invalid request" },
+    );
+
+    expect(execution.request.body).toEqual({ title: "Invalid request" });
+    expect(execution.request.bodyOmitted).toBeUndefined();
+  });
+
   it("does not capture an ignored exact path", () => {
     let wasCaptured = false;
     let nextWasCalled = false;

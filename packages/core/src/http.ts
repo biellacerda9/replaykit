@@ -7,7 +7,7 @@ export interface BodyOmissionSize {
 
 export interface BodyOmissionNotJson {
   readonly reason: "unsupported-content-type";
-  readonly contentType: string | undefined;
+  readonly contentType: string;
 }
 
 export type BodyOmission = BodyOmissionSize | BodyOmissionNotJson;
