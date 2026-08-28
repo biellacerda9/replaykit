@@ -50,6 +50,10 @@ app.post("/demo/health-status/:status", (request, response) => {
   response.json({ status: healthStatus });
 });
 
+app.get("/status", (_request, response) => {
+  response.json({ status: healthStatus });
+});
+
 app.post("/echo", (request, response) => {
   response.json(request.body);
 });
